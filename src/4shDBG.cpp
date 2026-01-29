@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
     else if (pid > 0)
     {
         // Parent process: create debugger instance and run it
+        std::cout<< "Starting debugging process " << pid << std::endl;
         debugger dbg{prog, pid};
         dbg.run();
     }
