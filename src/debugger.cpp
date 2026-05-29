@@ -1,10 +1,12 @@
 #include "debugger.h"
 #include <iostream>
+#include <stdexcept>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <linenoise.h>
 #include "breakpoint.h"
+#include "dwarf/dwarf++.hh"
 #include "registers.h"
 #include <vector>
 #include <sstream>
@@ -171,4 +173,44 @@ void debugger::wait_for_signal()
     int wait_status;
     auto options = 0;
     waitpid(m_pid, &wait_status, options);
+}
+
+dwarf::die debugger::get_function_from_pc(uint64_t pc)
+{
+    for(auto &cu : m_dwarf.compilation_units()){
+        // Check if pc is in given CU
+        if(dwarf::die_pc_range(cu.root()).contains(pc)){
+            // Iterate over all DIEs in CU to find the function DIE that contains the PC
+            for(const auto& die : cu.root()){
+                // We are only interested in subprogram DIEs, which represent functions
+                if(die.tag == dwarf::DW_TAG::subprogram){
+                    // Check if this function DIE's address range contains the PC
+                    if(dwarf::die_pc_range(die).contains(pc)){
+                        return die;
+                    }
+                }
+            }
+        }
+    }
+    
+    throw std::runtime_error("Function not found for PC");
+}
+
+dwarf::line_table::iterator debugger::get_line_entry_from_pc(uint64_t pc)
+{
+    for(const dwarf::compilation_unit& cu : m_dwarf.compilation_units()){
+        if(dwarf::die_pc_range(cu.root()).contains(pc)){
+            dwarf::line_table lt = cu.get_line_table(); // Get the line table for this compilation unit
+            auto it = lt.find_address(pc); // Find the line entry corresponding to the given PC
+            if(it != lt.end()){
+                return it;
+            }
+            else{
+                throw std::out_of_range("Line entry not found for PC");
+            }
+        }
+    }
+
+    throw std::runtime_error("Cannot find line for given PC");
+
 }
